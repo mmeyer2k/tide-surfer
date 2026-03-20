@@ -44,3 +44,21 @@ def submit_market_order(symbol, qty, side):
 
 def close_position(symbol):
     return get_api().close_position(symbol)
+
+
+def submit_limit_order(symbol, qty, side, limit_price, time_in_force="gtc"):
+    return get_api().submit_order(
+        symbol=symbol,
+        qty=qty,
+        side=side,
+        type="limit",
+        limit_price=round(limit_price, 2),
+        time_in_force=time_in_force,
+    )
+
+
+def cancel_order(order_id):
+    try:
+        get_api().cancel_order(order_id)
+    except Exception:
+        pass

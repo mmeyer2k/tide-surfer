@@ -1,7 +1,7 @@
 import json
 import os
 from datetime import date, datetime
-from config import MIN_HOLD_DAYS
+from config import MIN_HOLD_DAYS, MAX_HOLD_DAYS
 
 POSITIONS_FILE = "positions.json"
 
@@ -31,7 +31,7 @@ def add_position(
     entry_price: float,
     qty: int,
     stop_price: float,
-    target_price: float,
+    hail_mary_order_id: str = None,
 ):
     data = _load()
     data[symbol] = {
@@ -40,8 +40,8 @@ def add_position(
         "entry_date": date.today().isoformat(),
         "qty": qty,
         "stop_price": stop_price,
-        "target_price": target_price,
         "trailing_stop_price": None,
+        "hail_mary_order_id": hail_mary_order_id,
     }
     _save(data)
 
@@ -67,3 +67,13 @@ def can_exit(symbol: str) -> bool:
     entry_date = date.fromisoformat(pos["entry_date"])
     days_held = (date.today() - entry_date).days
     return days_held >= MIN_HOLD_DAYS
+
+
+def must_exit(symbol: str) -> bool:
+    """Returns True if the position has exceeded MAX_HOLD_DAYS and must be closed."""
+    pos = get_position(symbol)
+    if pos is None:
+        return False
+    entry_date = date.fromisoformat(pos["entry_date"])
+    days_held = (date.today() - entry_date).days
+    return days_held >= MAX_HOLD_DAYS

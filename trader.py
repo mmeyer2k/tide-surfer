@@ -7,6 +7,7 @@ import positions
 import regime
 import sectors
 import signals
+from positions import can_exit, must_exit
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,16 @@ def _check_exits():
     """Check all tracked positions for exit conditions."""
     all_positions = positions.get_all()
     for symbol, pos in list(all_positions.items()):
-        if not positions.can_exit(symbol):
+        # Max hold — overrides hold lock, must exit regardless
+        if must_exit(symbol):
+            logger.info(f"📅 {symbol}: max hold days reached, forcing exit")
+            if pos.get("hail_mary_order_id"):
+                alpaca_client.cancel_order(pos["hail_mary_order_id"])
+            alpaca_client.close_position(symbol)
+            positions.remove_position(symbol)
+            continue
+
+        if not can_exit(symbol):
             logger.info(f"⏳ {symbol}: hold lock active, skipping exit check")
             continue
 
@@ -57,17 +67,12 @@ def _check_exits():
                 pos["trailing_stop_price"] = new_trail
                 logger.info(f"Updated trailing stop for {symbol} to {new_trail:.2f}")
 
-        # Check profit target
-        if pct_change >= config.PROFIT_TARGET_PCT:
-            logger.info(f"💰 {symbol}: profit target hit ({pct_change*100:.1f}%), closing")
-            alpaca_client.close_position(symbol)
-            positions.remove_position(symbol)
-            continue
-
         # Check trailing stop
         trail_price = pos.get("trailing_stop_price")
         if trail_price and current_price <= trail_price:
             logger.info(f"🛑 {symbol}: trailing stop triggered at {current_price:.2f} (trail={trail_price:.2f}), closing")
+            if pos.get("hail_mary_order_id"):
+                alpaca_client.cancel_order(pos["hail_mary_order_id"])
             alpaca_client.close_position(symbol)
             positions.remove_position(symbol)
             continue
@@ -75,6 +80,8 @@ def _check_exits():
         # Check hard stop loss
         if pct_change <= -config.STOP_LOSS_PCT:
             logger.info(f"🛑 {symbol}: stop loss triggered ({pct_change*100:.1f}%), closing")
+            if pos.get("hail_mary_order_id"):
+                alpaca_client.cancel_order(pos["hail_mary_order_id"])
             alpaca_client.close_position(symbol)
             positions.remove_position(symbol)
             continue
@@ -123,15 +130,23 @@ def _open_new_positions(current_regime: str, ranked_sectors: list):
             continue
 
         stop_price = price * (1 - config.STOP_LOSS_PCT)
-        target_price = price * (1 + config.PROFIT_TARGET_PCT)
+        hail_mary_price = price * (1 + config.HAIL_MARY_PCT)
 
         logger.info(
             f"🏄 Entering {symbol} | regime={current_regime} sector={sector} "
-            f"qty={qty} price={price:.2f} stop={stop_price:.2f} target={target_price:.2f}"
+            f"qty={qty} price={price:.2f} stop={stop_price:.2f} hail_mary={hail_mary_price:.2f}"
         )
         try:
             alpaca_client.submit_market_order(symbol, qty, "buy")
-            positions.add_position(symbol, price, qty, stop_price, target_price)
+            # Place hail mary GTC limit sell at +25%
+            hail_mary_order_id = None
+            try:
+                hm_order = alpaca_client.submit_limit_order(symbol, qty, "sell", hail_mary_price)
+                hail_mary_order_id = hm_order.id
+                logger.info(f"🎯 Hail mary limit sell placed for {symbol} at ${hail_mary_price:.2f} (GTC)")
+            except Exception as e:
+                logger.warning(f"Could not place hail mary order for {symbol}: {e}")
+            positions.add_position(symbol, price, qty, stop_price, hail_mary_order_id)
             entries_made += 1
         except Exception as e:
             logger.error(f"Failed to submit order for {symbol}: {e}")
