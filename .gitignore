@@ -1,0 +1,5 @@
+.env
+positions.json
+tide-surfer.log
+__pycache__/
+*.pyc

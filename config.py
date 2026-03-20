@@ -1,4 +1,7 @@
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 ALPACA_API_KEY = os.environ.get("ALPACA_API_KEY", "")
 ALPACA_SECRET_KEY = os.environ.get("ALPACA_SECRET_KEY", "")
@@ -34,8 +37,8 @@ SECTOR_PROXIES = {
     "comms": "XLC",
 }
 
-MAX_POSITIONS = 3
-POSITION_SIZE_PCT = 0.30
+MAX_POSITIONS = 4
+POSITION_SIZE_PCT = 0.20
 PROFIT_TARGET_PCT = 0.08
 STOP_LOSS_PCT = 0.05
 TRAILING_STOP_ACTIVATE_PCT = 0.04
